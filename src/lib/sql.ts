@@ -81,6 +81,17 @@ function nodeToSql(node: QueryNode, source: DataSource): string | null {
   return ruleToSql(node, source);
 }
 
+/**
+ * Build just the WHERE expression for a tree (no "WHERE" keyword, no parens
+ * stripping). Returns null when there are no complete conditions. Reused by the
+ * multi-table join SQL generator.
+ */
+export function generateWhere(root: QueryGroup, source: DataSource): string | null {
+  const where = nodeToSql(root, source);
+  if (!where) return null;
+  return where.startsWith("(") && where.endsWith(")") ? where.slice(1, -1) : where;
+}
+
 /** Build a complete SELECT statement from the query tree. */
 export function generateSql(root: QueryGroup, source: DataSource): string {
   const where = nodeToSql(root, source);

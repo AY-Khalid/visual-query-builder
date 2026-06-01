@@ -1,9 +1,5 @@
-import { QueryBuilder } from "@/components/QueryBuilder";
+import { AppShell } from "@/components/vqb/AppShell";
 
 export default function Home() {
-  return (
-    <main className="min-h-screen">
-      <QueryBuilder />
-    </main>
-  );
+  return <AppShell />;
 }

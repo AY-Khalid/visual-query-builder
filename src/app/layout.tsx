@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Visual Query Builder",
+  title: "VQueryBuilder",
   description:
-    "Construct complex, deeply nested database queries through a graphical, schema-driven interface.",
+    "A visual, schema-driven SQL query builder — design tables, joins, conditions and projections graphically.",
 };
 
 // Prevent a flash of the wrong theme before hydration.

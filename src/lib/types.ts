@@ -95,3 +95,59 @@ export function isGroup(node: QueryNode): node is QueryGroup {
 export function isRule(node: QueryNode): node is QueryRule {
   return node.type === "rule";
 }
+
+/* ------------------------------------------------------------------ *
+ * Visual workspace models (DBeaver-style canvas, joins, projection)  *
+ * ------------------------------------------------------------------ */
+
+export type JoinType = "INNER" | "LEFT" | "RIGHT" | "FULL";
+
+export type Aggregate = "NONE" | "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
+
+/** A table instance placed on the canvas, with a query alias and position. */
+export interface CanvasTable {
+  id: string;
+  sourceId: string;
+  alias: string;
+  x: number;
+  y: number;
+}
+
+/** A join between two placed tables (referenced by canvas table id). */
+export interface Join {
+  id: string;
+  type: JoinType;
+  leftTableId: string;
+  leftField: string;
+  rightTableId: string;
+  rightField: string;
+}
+
+/** A projected (SELECT) column referencing a placed table. */
+export interface SelectColumn {
+  id: string;
+  tableId: string;
+  field: string;
+  alias?: string;
+  aggregate: Aggregate;
+}
+
+/** An ORDER BY entry. */
+export interface SortColumn {
+  id: string;
+  tableId: string;
+  field: string;
+  dir: "ASC" | "DESC";
+}
+
+/** A fully qualified field in the flattened multi-table catalog. */
+export interface CatalogField {
+  /** "alias.field" — used as the synthetic column key. */
+  key: string;
+  label: string;
+  type: FieldType;
+  tableId: string;
+  alias: string;
+  field: string;
+  options?: string[];
+}

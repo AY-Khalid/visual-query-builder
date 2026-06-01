@@ -1,6 +1,15 @@
-# Visual Query Builder
+# VQueryBuilder
 
-A highly interactive, schema-driven **visual query builder** built with Next.js (App Router) and TypeScript. Construct complex, deeply nested database queries through a graphical interface — no raw query syntax required — then preview the generated SQL and execute it against a mock dataset.
+A highly interactive, schema-driven **visual SQL query builder** built with Next.js (App Router) and TypeScript, presented as a DBeaver-style workbench. Browse a schema in the navigator, drag tables onto a canvas, draw joins, pick columns, compose deeply nested conditions, and watch the SQL and results update live — no raw query syntax required.
+
+### Workbench interface
+- **Database Navigator** (left) — browse built-in schemas and per-column types; **import a CSV file to create a new table** (types are inferred automatically).
+- **Visual canvas** (center-top) — draggable table cards with join lines drawn between related tables.
+- **Query panel** (center-bottom) — tabbed **Columns / Conditions / Joins / Sorting** editors.
+- **SQL Editor** (right-top) — live, syntax-highlighted SQL with copy.
+- **Results** (right-bottom) — paginated output of the executed query.
+- **Joins** — INNER / LEFT / RIGHT / FULL, generated into SQL and executed in-memory over the mock data.
+- Real **lucide-react** icons throughout; light/dark themes.
 
 Supports nested logic such as:
 
@@ -112,4 +121,4 @@ npm test
 ## 🌐 Deployment
 Continuously deployed on **Vercel**: every push to `main` ships production; every pull request gets a preview deployment.
 
-[**Live URL:**](https://visual-query-builder-xi.vercel.app/)
+[**Click here to view the live demo**](https://visual-query-builder-xi.vercel.app/)

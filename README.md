@@ -112,4 +112,4 @@ npm test
 ## 🌐 Deployment
 Continuously deployed on **Vercel**: every push to `main` ships production; every pull request gets a preview deployment.
 
-**Live URL:** _add your Vercel URL here after deploying._
+[**Live URL:**](https://visual-query-builder-xi.vercel.app/)

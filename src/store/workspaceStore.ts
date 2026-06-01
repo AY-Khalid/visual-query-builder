@@ -3,7 +3,7 @@
 import { create } from "zustand";
 import { DATA_SOURCES } from "@/lib/datasources";
 import { csvToDataSource } from "@/lib/csv";
-import { createGroup, createRootGroup, createRule, uid, updateNode, addChild, removeNode } from "@/lib/tree";
+import { createGroup, createRule, uid, updateNode, addChild, removeNode } from "@/lib/tree";
 import type {
   Aggregate,
   CanvasTable,
@@ -17,7 +17,28 @@ import type {
   Combinator,
 } from "@/lib/types";
 
-/** Generate the next table alias: f, l, t1, t2 … (DBeaver-ish single letters). */
+const HISTORY_LIMIT = 50;
+
+/** The subset of state that participates in undo/redo. */
+interface Snapshot {
+  tables: CanvasTable[];
+  joins: Join[];
+  columns: SelectColumn[];
+  sorts: SortColumn[];
+  conditionRoot: QueryGroup;
+}
+
+function snap(s: Snapshot): Snapshot {
+  return {
+    tables: s.tables,
+    joins: s.joins,
+    columns: s.columns,
+    sorts: s.sorts,
+    conditionRoot: s.conditionRoot,
+  };
+}
+
+/** Generate the next table alias: u, p, t1, t2 … */
 function nextAlias(existing: CanvasTable[], sourceId: string): string {
   const base = sourceId[0]?.toLowerCase() || "t";
   if (!existing.some((t) => t.alias === base)) return base;
@@ -26,13 +47,10 @@ function nextAlias(existing: CanvasTable[], sourceId: string): string {
   return `${base}${i}`;
 }
 
-interface WorkspaceState {
+interface WorkspaceState extends Snapshot {
   sources: DataSource[];
-  tables: CanvasTable[];
-  joins: Join[];
-  columns: SelectColumn[];
-  sorts: SortColumn[];
-  conditionRoot: QueryGroup;
+  past: Snapshot[];
+  future: Snapshot[];
 
   // canvas / tables
   addTable: (sourceId: string) => void;
@@ -40,7 +58,7 @@ interface WorkspaceState {
   moveTable: (tableId: string, x: number, y: number) => void;
   setAlias: (tableId: string, alias: string) => void;
 
-  // sources / CSV
+  // sources / CSV (not part of undo history)
   importCsv: (text: string, fileName: string) => string;
   removeSource: (sourceId: string) => void;
 
@@ -59,7 +77,7 @@ interface WorkspaceState {
   updateSort: (id: string, patch: Partial<SortColumn>) => void;
   removeSort: (id: string) => void;
 
-  // conditions (recursive tree, operates on the flattened catalog)
+  // conditions (recursive tree over the flattened catalog)
   addRule: (groupId: string) => void;
   addGroup: (groupId: string) => void;
   removeNodeById: (id: string) => void;
@@ -70,153 +88,189 @@ interface WorkspaceState {
   toggleNot: (id: string) => void;
   toggleCollapsed: (id: string) => void;
 
+  // history
+  undo: () => void;
+  redo: () => void;
   reset: () => void;
 }
 
-export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
-  sources: DATA_SOURCES,
-  tables: [],
-  joins: [],
-  columns: [],
-  sorts: [],
-  conditionRoot: createRootGroup(),
-
-  addTable: (sourceId) =>
-    set((s) => {
-      const alias = nextAlias(s.tables, sourceId);
-      const offset = s.tables.length;
-      const table: CanvasTable = {
-        id: uid("tbl"),
-        sourceId,
-        alias,
-        x: 40 + offset * 60,
-        y: 40 + offset * 40,
-      };
-      return { tables: [...s.tables, table] };
-    }),
-
-  removeTable: (tableId) =>
+export const useWorkspaceStore = create<WorkspaceState>((set, get) => {
+  /** Apply a data change, recording the previous snapshot for undo. */
+  const commit = (producer: (s: WorkspaceState) => Partial<Snapshot>) =>
     set((s) => ({
-      tables: s.tables.filter((t) => t.id !== tableId),
-      joins: s.joins.filter((j) => j.leftTableId !== tableId && j.rightTableId !== tableId),
-      columns: s.columns.filter((c) => c.tableId !== tableId),
-      sorts: s.sorts.filter((c) => c.tableId !== tableId),
-    })),
+      ...producer(s),
+      past: [...s.past, snap(s)].slice(-HISTORY_LIMIT),
+      future: [],
+    }));
 
-  moveTable: (tableId, x, y) =>
-    set((s) => ({ tables: s.tables.map((t) => (t.id === tableId ? { ...t, x, y } : t)) })),
+  return {
+    sources: DATA_SOURCES,
+    // Start with no conditions attached — the query runs with no filter by default.
+    tables: [],
+    joins: [],
+    columns: [],
+    sorts: [],
+    conditionRoot: createGroup("AND", []),
+    past: [],
+    future: [],
 
-  setAlias: (tableId, alias) =>
-    set((s) => ({ tables: s.tables.map((t) => (t.id === tableId ? { ...t, alias } : t)) })),
+    addTable: (sourceId) =>
+      commit((s) => {
+        const alias = nextAlias(s.tables, sourceId);
+        const offset = s.tables.length;
+        const table: CanvasTable = {
+          id: uid("tbl"),
+          sourceId,
+          alias,
+          x: 40 + offset * 60,
+          y: 40 + offset * 40,
+        };
+        return { tables: [...s.tables, table] };
+      }),
 
-  importCsv: (text, fileName) => {
-    const { source } = csvToDataSource(text, fileName);
-    set((s) => ({ sources: [...s.sources, source] }));
-    return source.id;
-  },
+    removeTable: (tableId) =>
+      commit((s) => ({
+        tables: s.tables.filter((t) => t.id !== tableId),
+        joins: s.joins.filter((j) => j.leftTableId !== tableId && j.rightTableId !== tableId),
+        columns: s.columns.filter((c) => c.tableId !== tableId),
+        sorts: s.sorts.filter((c) => c.tableId !== tableId),
+      })),
 
-  removeSource: (sourceId) =>
-    set((s) => ({
-      sources: s.sources.filter((src) => src.id !== sourceId),
-      tables: s.tables.filter((t) => t.sourceId !== sourceId),
-    })),
+    // dragging is high-frequency; do not flood history with every pixel
+    moveTable: (tableId, x, y) =>
+      set((s) => ({ tables: s.tables.map((t) => (t.id === tableId ? { ...t, x, y } : t)) })),
 
-  addJoin: () =>
-    set((s) => {
-      if (s.tables.length < 2) return s;
-      const [a, b] = s.tables;
-      const join: Join = {
-        id: uid("join"),
-        type: "INNER",
-        leftTableId: a.id,
-        leftField: sourceOf(s, a.sourceId)?.fields[0]?.name ?? "",
-        rightTableId: b.id,
-        rightField: sourceOf(s, b.sourceId)?.fields[0]?.name ?? "",
-      };
-      return { joins: [...s.joins, join] };
-    }),
+    setAlias: (tableId, alias) =>
+      commit((s) => ({ tables: s.tables.map((t) => (t.id === tableId ? { ...t, alias } : t)) })),
 
-  updateJoin: (id, patch) =>
-    set((s) => ({ joins: s.joins.map((j) => (j.id === id ? { ...j, ...patch } : j)) })),
+    importCsv: (text, fileName) => {
+      const { source } = csvToDataSource(text, fileName);
+      set((s) => ({ sources: [...s.sources, source] }));
+      return source.id;
+    },
 
-  removeJoin: (id) => set((s) => ({ joins: s.joins.filter((j) => j.id !== id) })),
+    removeSource: (sourceId) =>
+      set((s) => ({
+        sources: s.sources.filter((src) => src.id !== sourceId),
+        tables: s.tables.filter((t) => t.sourceId !== sourceId),
+      })),
 
-  addColumn: (tableId, field) =>
-    set((s) => ({
-      columns: [...s.columns, { id: uid("col"), tableId, field, aggregate: "NONE" as Aggregate }],
-    })),
+    addJoin: () =>
+      commit((s) => {
+        if (s.tables.length < 2) return {};
+        const [a, b] = s.tables;
+        const fa = s.sources.find((x) => x.id === a.sourceId)?.fields[0]?.name ?? "";
+        const fb = s.sources.find((x) => x.id === b.sourceId)?.fields[0]?.name ?? "";
+        const join: Join = {
+          id: uid("join"),
+          type: "INNER",
+          leftTableId: a.id,
+          leftField: fa,
+          rightTableId: b.id,
+          rightField: fb,
+        };
+        return { joins: [...s.joins, join] };
+      }),
 
-  updateColumn: (id, patch) =>
-    set((s) => ({ columns: s.columns.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
+    updateJoin: (id, patch) =>
+      commit((s) => ({ joins: s.joins.map((j) => (j.id === id ? { ...j, ...patch } : j)) })),
 
-  removeColumn: (id) => set((s) => ({ columns: s.columns.filter((c) => c.id !== id) })),
+    removeJoin: (id) => commit((s) => ({ joins: s.joins.filter((j) => j.id !== id) })),
 
-  addSort: (tableId, field) =>
-    set((s) => ({ sorts: [...s.sorts, { id: uid("sort"), tableId, field, dir: "ASC" }] })),
+    addColumn: (tableId, field) =>
+      commit((s) => ({
+        columns: [...s.columns, { id: uid("col"), tableId, field, aggregate: "NONE" as Aggregate }],
+      })),
 
-  updateSort: (id, patch) =>
-    set((s) => ({ sorts: s.sorts.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
+    updateColumn: (id, patch) =>
+      commit((s) => ({ columns: s.columns.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
 
-  removeSort: (id) => set((s) => ({ sorts: s.sorts.filter((c) => c.id !== id) })),
+    removeColumn: (id) => commit((s) => ({ columns: s.columns.filter((c) => c.id !== id) })),
 
-  addRule: (groupId) =>
-    set((s) => ({ conditionRoot: addChild(s.conditionRoot, groupId, createRule()) })),
+    addSort: (tableId, field) =>
+      commit((s) => ({ sorts: [...s.sorts, { id: uid("sort"), tableId, field, dir: "ASC" }] })),
 
-  addGroup: (groupId) =>
-    set((s) => ({
-      conditionRoot: addChild(s.conditionRoot, groupId, createGroup("AND", [createRule()])),
-    })),
+    updateSort: (id, patch) =>
+      commit((s) => ({ sorts: s.sorts.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
 
-  removeNodeById: (id) => set((s) => ({ conditionRoot: removeNode(s.conditionRoot, id) })),
+    removeSort: (id) => commit((s) => ({ sorts: s.sorts.filter((c) => c.id !== id) })),
 
-  setField: (id, field) =>
-    set((s) => ({
-      conditionRoot: updateNode(s.conditionRoot, id, (n) =>
-        n.type === "rule" ? { ...n, field, operator: null, value: "" } : n
-      ),
-    })),
+    addRule: (groupId) =>
+      commit((s) => ({ conditionRoot: addChild(s.conditionRoot, groupId, createRule()) })),
 
-  setOperator: (id, operator) =>
-    set((s) => ({
-      conditionRoot: updateNode(s.conditionRoot, id, (n) =>
-        n.type === "rule" ? { ...n, operator, value: "" } : n
-      ),
-    })),
+    addGroup: (groupId) =>
+      commit((s) => ({
+        conditionRoot: addChild(s.conditionRoot, groupId, createGroup("AND", [createRule()])),
+      })),
 
-  setValue: (id, value) =>
-    set((s) => ({
-      conditionRoot: updateNode(s.conditionRoot, id, (n) =>
-        n.type === "rule" ? { ...n, value } : n
-      ),
-    })),
+    removeNodeById: (id) => commit((s) => ({ conditionRoot: removeNode(s.conditionRoot, id) })),
 
-  setCombinator: (id, combinator) =>
-    set((s) => ({
-      conditionRoot: updateNode(s.conditionRoot, id, (n) =>
-        n.type === "group" ? { ...n, combinator } : n
-      ),
-    })),
+    setField: (id, field) =>
+      commit((s) => ({
+        conditionRoot: updateNode(s.conditionRoot, id, (n) =>
+          n.type === "rule" ? { ...n, field, operator: null, value: "" } : n
+        ),
+      })),
 
-  toggleNot: (id) =>
-    set((s) => ({
-      conditionRoot: updateNode(s.conditionRoot, id, (n) =>
-        n.type === "group" ? { ...n, not: !n.not } : n
-      ),
-    })),
+    setOperator: (id, operator) =>
+      commit((s) => ({
+        conditionRoot: updateNode(s.conditionRoot, id, (n) =>
+          n.type === "rule" ? { ...n, operator, value: "" } : n
+        ),
+      })),
 
-  toggleCollapsed: (id) =>
-    set((s) => ({
-      conditionRoot: updateNode(s.conditionRoot, id, (n) =>
-        n.type === "group" ? { ...n, collapsed: !n.collapsed } : n
-      ),
-    })),
+    setValue: (id, value) =>
+      commit((s) => ({
+        conditionRoot: updateNode(s.conditionRoot, id, (n) =>
+          n.type === "rule" ? { ...n, value } : n
+        ),
+      })),
 
-  reset: () =>
-    set({ tables: [], joins: [], columns: [], sorts: [], conditionRoot: createRootGroup() }),
-}));
+    setCombinator: (id, combinator) =>
+      commit((s) => ({
+        conditionRoot: updateNode(s.conditionRoot, id, (n) =>
+          n.type === "group" ? { ...n, combinator } : n
+        ),
+      })),
 
-function sourceOf(s: { sources: DataSource[] }, id: string): DataSource | undefined {
-  return s.sources.find((src) => src.id === id);
-}
+    toggleNot: (id) =>
+      commit((s) => ({
+        conditionRoot: updateNode(s.conditionRoot, id, (n) =>
+          n.type === "group" ? { ...n, not: !n.not } : n
+        ),
+      })),
+
+    // collapse is a view preference — not part of history
+    toggleCollapsed: (id) =>
+      set((s) => ({
+        conditionRoot: updateNode(s.conditionRoot, id, (n) =>
+          n.type === "group" ? { ...n, collapsed: !n.collapsed } : n
+        ),
+      })),
+
+    undo: () =>
+      set((s) => {
+        if (s.past.length === 0) return s;
+        const prev = s.past[s.past.length - 1];
+        return { ...prev, past: s.past.slice(0, -1), future: [snap(s), ...s.future].slice(0, HISTORY_LIMIT) };
+      }),
+
+    redo: () =>
+      set((s) => {
+        if (s.future.length === 0) return s;
+        const next = s.future[0];
+        return { ...next, past: [...s.past, snap(s)].slice(-HISTORY_LIMIT), future: s.future.slice(1) };
+      }),
+
+    reset: () =>
+      commit(() => ({
+        tables: [],
+        joins: [],
+        columns: [],
+        sorts: [],
+        conditionRoot: createGroup("AND", []),
+      })),
+  };
+});
 
 export type { JoinType };

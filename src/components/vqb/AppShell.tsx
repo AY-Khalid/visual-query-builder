@@ -30,46 +30,68 @@ export function AppShell() {
   const joinedRows = useMemo(() => buildJoinedRows(resolved, joins), [resolved, joins]);
   const catalogSource = useMemo(() => buildCatalogSource(catalog, joinedRows), [catalog, joinedRows]);
 
+  const undo = useWorkspaceStore((s) => s.undo);
+  const redo = useWorkspaceStore((s) => s.redo);
+
   const issues = useMemo(() => validateTree(conditionRoot, catalogSource), [conditionRoot, catalogSource]);
   const issueMap = useMemo(() => {
     const m = new Map<string, string>();
-    for (const i of issues) if (!m.has(i.nodeId)) m.set(i.nodeId, i.message);
+    // The root group may legitimately be empty ("no conditions"), so don't flag it.
+    for (const i of issues) {
+      if (i.nodeId === conditionRoot.id) continue;
+      if (!m.has(i.nodeId)) m.set(i.nodeId, i.message);
+    }
     return m;
-  }, [issues]);
+  }, [issues, conditionRoot.id]);
 
   const sql = useMemo(
     () => generateJoinSql(resolved, joins, columns, conditionRoot, catalogSource, sorts),
     [resolved, joins, columns, conditionRoot, catalogSource, sorts]
   );
 
-  const valid = resolved.length > 0 && issues.length === 0;
+  // The query can run as long as there is at least one table — conditions are optional.
+  const canRun = resolved.length > 0;
 
   const [result, setResult] = useState<ProjectedResult | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Clear the results table when the canvas (and therefore the SQL) is empty.
+  useEffect(() => {
+    if (resolved.length === 0) setResult(null);
+  }, [resolved.length]);
+
   const run = useCallback(() => {
-    if (!valid) return;
+    if (!canRun) return;
     setLoading(true);
     setTimeout(() => {
       setResult(executeJoinQuery(resolved, catalog, joinedRows, columns, conditionRoot, sorts));
       setLoading(false);
     }, 220);
-  }, [valid, resolved, catalog, joinedRows, columns, conditionRoot, sorts]);
+  }, [canRun, resolved, catalog, joinedRows, columns, conditionRoot, sorts]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      if (key === "enter") {
         e.preventDefault();
         run();
+      } else if (key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((key === "z" && e.shiftKey) || key === "y") {
+        e.preventDefault();
+        redo();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [run]);
+  }, [run, undo, redo]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden text-slate-900 dark:text-slate-100">
-      <Toolbar onRun={run} canRun={valid} />
+      <Toolbar onRun={run} canRun={canRun} />
 
       <div className="flex min-h-0 flex-1">
         <Navigator />

@@ -47,7 +47,10 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.length > 1 || (r.length === 1 && r[0].trim() !== ""));
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$/;
+// Recognises ISO (YYYY-MM-DD, optional time), and slash formats (YYYY/MM/DD,
+// MM/DD/YYYY or DD/MM/YYYY).
+const DATE_RE =
+  /^(\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?|\d{4}\/\d{1,2}\/\d{1,2}|\d{1,2}\/\d{1,2}\/\d{4})$/;
 
 /** Infer a column's field type from a sample of string values. */
 function inferType(values: string[]): FieldType {

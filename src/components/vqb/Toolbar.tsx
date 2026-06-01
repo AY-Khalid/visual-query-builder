@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Boxes, Moon, Play, RotateCcw, Sun } from "lucide-react";
+import { Boxes, Moon, Play, Redo2, RotateCcw, Sun, Undo2 } from "lucide-react";
 import { useWorkspaceStore } from "@/store/workspaceStore";
 
 function ThemeBtn() {
@@ -26,6 +26,10 @@ function ThemeBtn() {
 
 export function Toolbar({ onRun, canRun }: { onRun: () => void; canRun: boolean }) {
   const reset = useWorkspaceStore((s) => s.reset);
+  const undo = useWorkspaceStore((s) => s.undo);
+  const redo = useWorkspaceStore((s) => s.redo);
+  const canUndo = useWorkspaceStore((s) => s.past.length > 0);
+  const canRedo = useWorkspaceStore((s) => s.future.length > 0);
   return (
     <header className="flex items-center gap-3 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-center gap-2">
@@ -42,6 +46,22 @@ export function Toolbar({ onRun, canRun }: { onRun: () => void; canRun: boolean 
       </span>
 
       <div className="ml-auto flex items-center gap-2">
+        <button
+          onClick={undo}
+          disabled={!canUndo}
+          title="Undo (Ctrl+Z)"
+          className="rounded p-1.5 text-slate-500 hover:bg-slate-200/70 disabled:opacity-30 dark:hover:bg-slate-700"
+        >
+          <Undo2 size={16} />
+        </button>
+        <button
+          onClick={redo}
+          disabled={!canRedo}
+          title="Redo (Ctrl+Shift+Z)"
+          className="rounded p-1.5 text-slate-500 hover:bg-slate-200/70 disabled:opacity-30 dark:hover:bg-slate-700"
+        >
+          <Redo2 size={16} />
+        </button>
         <button
           onClick={onRun}
           disabled={!canRun}

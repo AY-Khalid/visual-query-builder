@@ -1,10 +1,29 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Table } from "lucide-react";
+import { Download, Table } from "lucide-react";
 import type { ProjectedResult } from "@/lib/joinExecute";
 
 const PAGE = 12;
+
+/** Quote a CSV cell when it contains a comma, quote, or newline. */
+function csvCell(value: unknown): string {
+  const s = value === null || value === undefined ? "" : String(value);
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportCsv(result: ProjectedResult) {
+  const header = result.columns.map((c) => csvCell(c.label)).join(",");
+  const body = result.rows.map((r) => result.columns.map((c) => csvCell(r[c.key])).join(",")).join("\n");
+  const csv = `${header}\n${body}`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "query-result.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export function ResultsPanel({ result, loading }: { result: ProjectedResult | null; loading: boolean }) {
   const [page, setPage] = useState(0);
@@ -19,9 +38,20 @@ export function ResultsPanel({ result, loading }: { result: ProjectedResult | nu
         <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">
           <Table size={14} /> Results
         </span>
-        <span className="text-[11px] text-slate-500">
-          {loading ? "Running…" : result ? `${result.total} row(s)` : "Run a query to see results"}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-slate-500">
+            {loading ? "Running…" : result ? `${result.total} row(s)` : "Run a query to see results"}
+          </span>
+          {result && result.total > 0 && (
+            <button
+              onClick={() => exportCsv(result)}
+              title="Export results as CSV"
+              className="inline-flex items-center gap-1 rounded border border-slate-300 px-1.5 py-0.5 text-[11px] hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-800"
+            >
+              <Download size={12} /> CSV
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="thin-scroll flex-1 overflow-auto">

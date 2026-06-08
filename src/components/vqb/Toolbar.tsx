@@ -42,7 +42,7 @@ export function Toolbar({ onRun, canRun }: { onRun: () => void; canRun: boolean 
       </div>
 
       <span className="hidden items-center gap-1.5 rounded border border-slate-200 px-2 py-1 text-xs text-slate-500 sm:flex dark:border-slate-700">
-        <span className="h-2 w-2 rounded-full bg-emerald-500" /> localhost · sample schema
+        <span className="h-2 w-2 rounded-full bg-emerald-500" /> schema
       </span>
 
       <div className="ml-auto flex items-center gap-2">

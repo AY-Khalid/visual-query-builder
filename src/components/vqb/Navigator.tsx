@@ -52,7 +52,7 @@ export function Navigator() {
   }
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/60">
+    <aside className="flex max-h-[45vh] w-full shrink-0 flex-col border-b border-slate-200 bg-slate-50 md:h-full md:max-h-none md:w-64 md:border-b-0 md:border-r dark:border-slate-800 dark:bg-slate-900/60">
       <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-800">
         <Database size={14} /> Database Navigator
       </div>
